@@ -1,5 +1,6 @@
 require 'fluentnode'
 
+net   = require('net');
 Proxy = require '../src/Proxy'
 
 describe 'Proxy', ->
@@ -7,18 +8,13 @@ describe 'Proxy', ->
   options = null
 
   beforeEach ->
-    options =
-      port: 8000 + 1000.random()
+    #options =
+    #  port: 8000 + 1000.random()
 
-    proxy = new Proxy(options)
+    proxy = new Proxy()
 
   afterEach (done)->
-    if proxy.httpServer
-      proxy.httpServer.close_And_Destroy_Sockets ->
-        done()
-    else
-      done()
-      #proxy.httpServer.close()
+    proxy.stop done
 
   it 'constructor', ->
     Proxy.assert_Is_Function()
@@ -29,64 +25,58 @@ describe 'Proxy', ->
   it 'create_Server', (done)->
     using proxy , ->
       @.create_Server()
-      config = @.server_Config()
-      url = "http://#{config.host}:#{config.port}"
-      url.assert_Is "http://localhost:#{options.port}"
+      url = "http://#{@.host}:#{@.port}"
+      #url.assert_Is "http://localhost:#{config.port}"
       #console.log url
-      url.GET (data)->
-        data.assert_Is '"connect ECONNREFUSED 127.0.0.1:80"'
-        done()
+      #console.log url
 
 
-#  it 'errorWrapper', ->
-#    using proxy , ->
-#      try
-#        console.log @.error_Wrapper(null)()
-#      catch error
-#        error.str().assert_Is 'TypeError: object is not a function'
-
-  it 'server_Config', ->
-    using proxy.server_Config() , ->
-      #console.log @
-      @.port.assert_Is options.port
-      @.host.assert_Is 'localhost'
-
-
-
-
-
-  it.only 'make raw request', (done)->
-    data = 'GET http://www.google.com/bbbbbbbbbbbb?132 HTTP/1.1' + '\n' +
-            'Host: www.google.com'                               + '\n' +
-            'User-Agent: Mozilla/5.0 '                           + '\n' +
-            'Accept: text/html '                                 + '\n' +
-            'Accept-Language: en-GB,en;q=0.5 '                   + '\n' +
-            'Accept-Encoding: gzip, deflate'                     + '\n' +
-            'Connection: keep-alive'                             + '\n' +
-            '\n'
-
-    net = require('net');
-
-    using proxy , ->
-      @.create_Server()
-      config = @.server_Config()
       client = new net.Socket();
-      #config.port = 8010
-      console.log config
 
-      client.connect config.port, config.host, ()->
-        console.log('Connected ...a1...')
-        client.write data
-
+      client.connect @.port, @.host, ->
+        self_Request = "GET #{url}/ HTTP/1.1\n\n"
+        client.write self_Request
 
       client.on 'data', (data)->
-        console.log('Received: ' + data);
-        client.destroy()
-
-
-      client.on 'close', ()->
-        console.log('Connection closed')
+        data.str().assert_Contains 'xss proxy is here'
+      client.on 'close', ->
         done()
+
+
+  it 'stop', (done)->
+    proxy.stop ->
+      done()
+
+#  it 'make raw request', (done)->
+#    data = 'GET http://www.google.com/bbbbbbbbbbbb?132 HTTP/1.1' + '\n' +
+#            'Host: www.google.com'                               + '\n' +
+#            'User-Agent: Mozilla/5.0 '                           + '\n' +
+#            'Accept: text/html '                                 + '\n' +
+#            'Accept-Language: en-GB,en;q=0.5 '                   + '\n' +
+#            'Accept-Encoding: gzip, deflate'                     + '\n' +
+#            'Connection: keep-alive'                             + '\n' +
+#            '\n'
+#
+#
+#
+#    using proxy , ->
+#      @.create_Server()
+#      client = new net.Socket();
+#      #config.port = 8010
+#
+#      client.connect @.port, @.host, ()->
+#        console.log('Connected ...a1...')
+#        client.write data
+#
+#
+#      client.on 'data', (data)->
+#        console.log('Received: ' + data);
+#        client.destroy()
+#
+#
+#      client.on 'close', ()->
+#        console.log('Connection closed')
+#        done()
 
 
 

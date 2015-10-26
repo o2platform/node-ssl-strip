@@ -2,41 +2,40 @@ EventEmitter = require('events').EventEmitter
 https        = require('https')
 http         = require('http')
 url          = require('url')
+zlib         = require('zlib')
 
 class Proxy
   constructor: (options)->
     @.emitter    = new EventEmitter()
     @.httpServer = null
     @.options    = options || {}
+    @.port       = @.options.port || 30000 + 5000.random()
+    @.host       = @.options.host || 'localhost'
 
 
-  create_Server: =>
-    config = @.server_Config()
+  create_Server: (callback)=>
 
     @.httpServer = http.createServer(@.get_Request_Listener());
-    @.httpServer.listen(config.port, config.host);
+
     @.httpServer.on 'clientError',  (error)=>
-      console.log error
-      @.emitter.emit('clientError', error, 'proxyClient')
+      console.log '[clientError] ' + error
+      #@.emitter.emit('clientError', error, 'proxyClient')
     @.httpServer.on 'error'      ,  (error)=>
-      console.log error
-      @.emitter.emit('error'      , error, 'proxyServer')
+      console.log '[error] ' + error
+      #@.emitter.emit('error :'      , error, 'proxyServer')
 
-
-
-    console.log "Server created at http://#{config.host}:#{config.port}"
+    @.httpServer.listen @.port, @.host, =>
+      console.log "Server created at http://#{@.host}:#{@.port}"
+      callback() if callback
 
 
   get_Request_Info: (req)=>
-    parsedUrl              = url.parse(req.url);
-    #isSsl                  = false
-    headers                = req.headers
-    parsedHost             = url.parse('http://' + headers['host']);
-
-    headers['x-xss-proxy'] = 'enabled'
+    parsedUrl   = url.parse(req.url);
+    headers     = req.headers
+    parsedHost  = url.parse('http://' + headers['host']);
 
     #if headers['x-xss-proxy'] and headers['x-xss-proxy'].indexOf('text') >  -1
-    headers['accept-encoding'] = ''
+    #headers['accept-encoding'] = ''
 
     requestInfo =
       host   : parsedUrl.hostname || parsedHost.hostname,
@@ -45,6 +44,7 @@ class Proxy
       method : req.method,
       headers: headers
 
+    headers['x-xss-proxy'] = 'enabled'
 
     return @.on_Get_Request_Info(requestInfo, parsedUrl, parsedHost)
 
@@ -52,17 +52,21 @@ class Proxy
   get_Request_Listener: =>
     (req,res)=>
       if req.headers['x-xss-proxy']
-        res.write('xss proxy is here')
-        res.end()
+        return @.send_Data res, 'xss proxy is here'
+
+      #if req.url is '/'
+      #  res.write('direct requests are not supported')
+      #  res.end()
 
 
       requestInfo = @.get_Request_Info(req)
 
       engine = if @.use_SSL(requestInfo) then https else http
+
       proxy_Req = engine.request requestInfo,  (proxy_Res)=>
         res.writeHead proxy_Res.statusCode, proxy_Res.headers
 
-        if (@.intercept_Request(requestInfo, proxy_Res.headers))
+        if (@.intercept_Request(req.url, requestInfo, proxy_Res.headers))
           @.proxy_Data_Intercept(res, proxy_Res)
         else
           @.proxy_Data_Transparent(res,proxy_Res)
@@ -73,9 +77,7 @@ class Proxy
       proxy_Req.end()
 
 
-  intercept_Request: (requestInfo, proxy_Res_Headers)=>
-    if proxy_Res_Headers['content-type']
-      return proxy_Res_Headers['content-type'].indexOf('text/html') > -1
+  intercept_Request: (url, requestInfo, proxy_Res_Headers)=>
     return false
 
   on_Get_Request_Info : (request_Info, parsedUrl, parsedHost)=>
@@ -83,29 +85,56 @@ class Proxy
     request_Info
 
   proxy_Data_Transparent: (res, proxy_Res)=>
-    proxy_Res.on 'data' , (chunk)->
-      res.write(chunk)
-    proxy_Res.on 'end' , ()=>
-      res.end()
+#    if false and proxy_Res.headers['content-encoding'] is 'gzip'
+#      proxy_Res.headers
+#      gunZip = zlib.createGunzip()
+#      proxy_Res.pipe(gunZip)
+#
+#      data = ''
+#      gunZip.on 'data', (chunk)->
+#        data += chunk
+#
+#      proxy_Res.on 'end' , ()=>
+#        data = data.replace(/API/g,'aaaaaaa')
+#
+#        buf = new Buffer(data, 'utf-8');
+#        zlib.gzip buf,  (error, result) ->
+#          res.end(result);
+#    else
+    proxy_Res.pipe res
 
   proxy_Data_Intercept: (res,proxy_Res)=>
     data = ''
-    proxy_Res.on 'data' , (chunk)->
-      data += chunk
-    proxy_Res.on 'end' , ()=>
-      @.send_Data res, data
+    if proxy_Res.headers['content-encoding'] is 'gzip'
 
-  send_Data: (res, data)=>
-    data = data.replace /JADE/g, 'aaa12aaa'
-    res.write data
-    res.end()
+      proxy_Res.headers
+      gunZip = zlib.createGunzip()
+      proxy_Res.pipe(gunZip)
 
+      gunZip.on 'data', (chunk)->
+        data += chunk.toString('utf-8')
+        console.log data.length
 
-  server_Config: =>
-    config =
-      port: @.options.port || 8888
-      host: 'localhost'
-    return config
+      gunZip.on 'end' , ()=>
+        buf = new Buffer(@.modify_Data(data), 'utf-8');
+        zlib.gzip buf,  (error, result) ->
+          res.end(result);
+    else
+      proxy_Res.on 'data' , (chunk)->
+        data += chunk
+      proxy_Res.on 'end' , ()=>
+        res.write @.modify_Data(data)
+        res.end()
+
+  modify_Data: (data)=>
+    data
+
+  stop: (callback)=>
+    if @.httpServer
+      @.httpServer.close_And_Destroy_Sockets ->
+        callback() if callback
+    else
+      callback()
 
   use_SSL: (requestInfo)=>
     requestInfo.port is 80
