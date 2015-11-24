@@ -40,17 +40,17 @@ describe 'Proxy_Client', ->
       return true
 
     using proxy_Client, ->
-
       @.GET 'http://www.google.com', (data, headers)=>
         url2 = headers.location.replace('https','http')
         console.log url2
         @.GET url2, (data, headers)->
+
           $ = cheerio.load(data)
-          console.log $('title').html().assert_Is 'Google'
+          $('title').html().assert_Is 'Google'
           assert_Is_Undefined headers.location
           done()
 
-  it.only 'GET (with gzip)', (done)->
+  it 'GET (with gzip)', (done)->
     proxy.use_SSL  = -> true
 
     using proxy_Client, ->

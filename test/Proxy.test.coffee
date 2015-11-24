@@ -21,6 +21,7 @@ describe 'Proxy', ->
     using proxy, ->
       @.emitter.constructor.name.assert_Is 'EventEmitter'
       assert_Is_Null(@.httpServer)
+      @.test.assert_Is 125 
 
   it 'create_Server', (done)->
     using proxy , ->

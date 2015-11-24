@@ -11,6 +11,7 @@ class Proxy
     @.options    = options || {}
     @.port       = @.options.port || 30000 + 5000.random()
     @.host       = @.options.host || 'localhost'
+    @.test       = 125
 
 
   create_Server: (callback)=>
@@ -51,19 +52,35 @@ class Proxy
 
   get_Request_Listener: =>
     (req,res)=>
+
+      @.on_Request(req,res)
+
       if req.headers['x-xss-proxy']
-        return @.send_Data res, 'xss proxy is here'
+        res.write 'xss proxy is here'
+        res.end()
+        return
+
+      requestInfo = @.get_Request_Info(req)
+
+      if @.skip_Request(req.url, requestInfo)
+        res.writeHead(201,  {'xss-proxy':'request skipped'})
+        res.write 'no request'
+        res.end()
+        return
 
       #if req.url is '/'
       #  res.write('direct requests are not supported')
       #  res.end()
 
 
-      requestInfo = @.get_Request_Info(req)
 
       engine = if @.use_SSL(requestInfo) then https else http
 
       proxy_Req = engine.request requestInfo,  (proxy_Res)=>
+
+        @.on_Proxy_Response proxy_Res
+        @.on_Proxy_Response_Headers proxy_Res.headers
+
         res.writeHead proxy_Res.statusCode, proxy_Res.headers
 
         if (@.intercept_Request(req.url, requestInfo, proxy_Res.headers))
@@ -81,8 +98,17 @@ class Proxy
     return false
 
   on_Get_Request_Info : (request_Info, parsedUrl, parsedHost)=>
-    console.log parsedUrl.hostname , parsedUrl.pathname
+    #console.log parsedUrl.hostname , parsedUrl.pathname
     request_Info
+
+  on_Request: (req, res)->
+    return
+
+  on_Proxy_Response: (res)->
+    return
+
+  on_Proxy_Response_Headers: (headers)->
+    return
 
   proxy_Data_Transparent: (res, proxy_Res)=>
 #    if false and proxy_Res.headers['content-encoding'] is 'gzip'
@@ -113,7 +139,6 @@ class Proxy
 
       gunZip.on 'data', (chunk)->
         data += chunk.toString('utf-8')
-        console.log data.length
 
       gunZip.on 'end' , ()=>
         buf = new Buffer(@.modify_Data(data), 'utf-8');
@@ -128,6 +153,9 @@ class Proxy
 
   modify_Data: (data)=>
     data
+
+  skip_Request: (data)=>
+    return false
 
   stop: (callback)=>
     if @.httpServer
