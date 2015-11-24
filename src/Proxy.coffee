@@ -20,11 +20,8 @@ class Proxy
 
     @.httpServer.on 'clientError',  (error)=>
       console.log '[clientError] ' + error
-      #@.emitter.emit('clientError', error, 'proxyClient')
     @.httpServer.on 'error'      ,  (error)=>
       console.log '[error] ' + error
-      #@.emitter.emit('error :'      , error, 'proxyServer')
-
     @.httpServer.listen @.port, @.host, =>
       console.log "Server created at http://#{@.host}:#{@.port}"
       callback() if callback
@@ -111,22 +108,6 @@ class Proxy
     return
 
   proxy_Data_Transparent: (res, proxy_Res)=>
-#    if false and proxy_Res.headers['content-encoding'] is 'gzip'
-#      proxy_Res.headers
-#      gunZip = zlib.createGunzip()
-#      proxy_Res.pipe(gunZip)
-#
-#      data = ''
-#      gunZip.on 'data', (chunk)->
-#        data += chunk
-#
-#      proxy_Res.on 'end' , ()=>
-#        data = data.replace(/API/g,'aaaaaaa')
-#
-#        buf = new Buffer(data, 'utf-8');
-#        zlib.gzip buf,  (error, result) ->
-#          res.end(result);
-#    else
     proxy_Res.pipe res
 
   proxy_Data_Intercept: (res,proxy_Res)=>
